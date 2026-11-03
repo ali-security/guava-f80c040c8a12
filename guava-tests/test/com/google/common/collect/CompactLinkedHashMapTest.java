@@ -17,12 +17,21 @@ package com.google.common.collect;
 import static com.google.common.collect.Maps.immutableEntry;
 import static com.google.common.truth.Truth.assertThat;
 import static java.lang.Math.max;
+import static org.junit.Assert.assertThrows;
 
+import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.collect.testing.MapTestSuiteBuilder;
 import com.google.common.collect.testing.TestStringMapGenerator;
 import com.google.common.collect.testing.features.CollectionFeature;
 import com.google.common.collect.testing.features.CollectionSize;
 import com.google.common.collect.testing.features.MapFeature;
+import com.google.common.testing.SerializableTester;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -204,5 +213,37 @@ public class CompactLinkedHashMapTest extends TestCase {
       assertThat(map.values).hasLength(expectedSize);
       assertThat(map.links).hasLength(expectedSize);
     }
+  }
+
+  @J2ktIncompatible
+  @GwtIncompatible // java.io.ObjectInputStream
+  public void testDeserializeWithHugeSize() throws Exception {
+    CompactLinkedHashMap<Integer, String> map = CompactLinkedHashMap.create();
+    map.put(1, "1");
+    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+    try (ObjectOutputStream oos = new ObjectOutputStream(baos)) {
+      oos.writeObject(map);
+    }
+    try (ObjectInputStream ois =
+        new ObjectInputStream(new ByteArrayInputStream(baos.toByteArray())) {
+          @Override
+          public int readInt() throws IOException {
+            int unused = super.readInt();
+            return Integer.MAX_VALUE;
+          }
+        }) {
+      assertThrows(IOException.class, ois::readObject);
+    }
+  }
+
+  @J2ktIncompatible
+  @GwtIncompatible // SerializableTester
+  public void testSerializationLargerThanInitialCapacityCap() {
+    CompactLinkedHashMap<Integer, String> map = CompactLinkedHashMap.create();
+    for (int i = 1000; i > 0; i--) {
+      map.put(i, Integer.toString(i));
+    }
+    CompactLinkedHashMap<Integer, String> copy = SerializableTester.reserialize(map);
+    assertThat(copy).containsExactlyEntriesIn(map).inOrder();
   }
 }

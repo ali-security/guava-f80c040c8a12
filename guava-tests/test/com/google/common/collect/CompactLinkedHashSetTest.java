@@ -19,13 +19,21 @@ package com.google.common.collect;
 import static com.google.common.truth.Truth.assertThat;
 import static java.lang.Math.max;
 import static java.util.Arrays.asList;
+import static org.junit.Assert.assertThrows;
 
 import com.google.common.annotations.GwtIncompatible;
+import com.google.common.annotations.J2ktIncompatible;
 import com.google.common.collect.testing.SetTestSuiteBuilder;
 import com.google.common.collect.testing.TestStringSetGenerator;
 import com.google.common.collect.testing.features.CollectionFeature;
 import com.google.common.collect.testing.features.CollectionSize;
 import com.google.common.collect.testing.features.Feature;
+import com.google.common.testing.SerializableTester;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -108,5 +116,37 @@ public class CompactLinkedHashSetTest extends TestCase {
       int expectedSize = max(1, i);
       assertThat(set.elements).hasLength(expectedSize);
     }
+  }
+
+  @J2ktIncompatible
+  @GwtIncompatible // java.io.ObjectInputStream
+  public void testDeserializeWithHugeSize() throws Exception {
+    CompactLinkedHashSet<Integer> set = CompactLinkedHashSet.create();
+    set.add(1);
+    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+    try (ObjectOutputStream oos = new ObjectOutputStream(baos)) {
+      oos.writeObject(set);
+    }
+    try (ObjectInputStream ois =
+        new ObjectInputStream(new ByteArrayInputStream(baos.toByteArray())) {
+          @Override
+          public int readInt() throws IOException {
+            int unused = super.readInt();
+            return Integer.MAX_VALUE;
+          }
+        }) {
+      assertThrows(IOException.class, ois::readObject);
+    }
+  }
+
+  @J2ktIncompatible
+  @GwtIncompatible // SerializableTester
+  public void testSerializationLargerThanInitialCapacityCap() {
+    CompactLinkedHashSet<Integer> set = CompactLinkedHashSet.create();
+    for (int i = 1000; i > 0; i--) {
+      set.add(i);
+    }
+    CompactLinkedHashSet<Integer> copy = SerializableTester.reserialize(set);
+    assertThat(copy).containsExactlyElementsIn(set).inOrder();
   }
 }
